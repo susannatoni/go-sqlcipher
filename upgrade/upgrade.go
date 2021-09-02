@@ -1,5 +1,5 @@
 // +build !cgo
-// +build upgrade,ignore
+// +build upgrade
 
 package main
 
