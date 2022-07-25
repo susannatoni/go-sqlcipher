@@ -4,6 +4,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file.
 
+//go:build cgo
 // +build cgo
 
 package sqlite3
@@ -1046,6 +1047,8 @@ func (d *SQLiteDriver) Open(dsn string) (driver.Conn, error) {
 	// SQLCipher PRAGMA's
 	pragmaKey := ""
 	pragmaCipherPageSize := -1
+	pragmaCipherPlaintextHeaderSize := -1
+	pragmaCipherSalt := ""
 
 	pos := strings.IndexRune(dsn, '?')
 	if pos >= 1 {
@@ -1387,6 +1390,20 @@ func (d *SQLiteDriver) Open(dsn string) (driver.Conn, error) {
 			pragmaCipherPageSize = pageSize
 		}
 
+		// _pragma_cipher_plaintext_header_size
+		if val := params.Get("_pragma_cipher_plaintext_header_size"); val != "" {
+			plaintextHeaderSize, err := strconv.Atoi(val)
+			if err != nil {
+				return nil, fmt.Errorf("sqlite3: _pragma_cipher_plaintext_header_size cannot be parsed: %s", err)
+			}
+			pragmaCipherPlaintextHeaderSize = plaintextHeaderSize
+		}
+
+		// _pragma_cipher_salt
+		if val := params.Get("_pragma_cipher_salt"); val != "" {
+			pragmaCipherSalt = val
+		}
+
 		if !strings.HasPrefix(dsn, "file:") {
 			dsn = dsn[:pos]
 		}
@@ -1445,6 +1462,25 @@ func (d *SQLiteDriver) Open(dsn string) (driver.Conn, error) {
 	if pragmaCipherPageSize != -1 {
 		query := fmt.Sprintf("PRAGMA cipher_page_size = %d;",
 			pragmaCipherPageSize)
+		if err := exec(query); err != nil {
+			C.sqlite3_close_v2(db)
+			return nil, err
+		}
+	}
+
+	// _pragma_cipher_plaintext_header_size
+	if pragmaCipherPlaintextHeaderSize != -1 {
+		query := fmt.Sprintf("PRAGMA cipher_plaintext_header_size = %d;",
+			pragmaCipherPlaintextHeaderSize)
+		if err := exec(query); err != nil {
+			C.sqlite3_close_v2(db)
+			return nil, err
+		}
+	}
+
+	// _pragma_cipher_salt
+	if pragmaCipherSalt != "" {
+		query := fmt.Sprintf("PRAGMA cipher_salt = \"%s\";", pragmaCipherSalt)
 		if err := exec(query); err != nil {
 			C.sqlite3_close_v2(db)
 			return nil, err
